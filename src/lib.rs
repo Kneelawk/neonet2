@@ -1,7 +1,10 @@
 mod grid;
 mod timer;
 
-use crate::grid::{Grid, Positioned};
+use crate::{
+    grid::{Grid, Positioned},
+    timer::Timer,
+};
 use rand::{thread_rng, Rng};
 use std::{cell::RefCell, rc::Rc, time::UNIX_EPOCH};
 use wasm_bindgen::{
@@ -13,10 +16,9 @@ use wasm_bindgen::{
     },
 };
 use web_sys::{console, CanvasRenderingContext2d, HtmlCanvasElement};
-use crate::timer::Timer;
 
 const LINE_LENGTH: f32 = 200f32;
-const POINT_COUNT: u32 = 300;
+const POINT_COUNT: u32 = 200;
 const BACKGROUND_COLOR: &str = "#000c18";
 const LINE_COLOR: &str = "#006688";
 
@@ -34,7 +36,7 @@ pub fn main_js() -> Result<(), JsValue> {
     // This provides better error messages in debug mode.
     // It's disabled in release mode so it doesn't bloat up the file size.
     #[cfg(debug_assertions)]
-    console_error_panic_hook::set_once();
+        console_error_panic_hook::set_once();
 
     Ok(())
 }
@@ -77,8 +79,7 @@ fn now() -> SystemTime {
 struct Model {
     canvas: HtmlCanvasElement,
     context: CanvasRenderingContext2d,
-    points: Vec<Point>,
-    gathered: Grid<Point>,
+    points: Grid<Point>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -145,12 +146,17 @@ impl Model {
             .set_global_composite_operation("destination-atop")
             .unwrap();
 
-        let mut points = vec![];
+        let mut points = Grid::new(
+            LINE_LENGTH,
+            LINE_LENGTH,
+            width + LINE_LENGTH * 2.0,
+            height + LINE_LENGTH * 2.0,
+        );
         let mut rng = thread_rng();
         for _i in 0..POINT_COUNT {
             let angle = rng.gen_range(0.0..(PI * 2.0));
             let speed = rng.gen_range(20.0..100.0f32);
-            points.push(Point {
+            points.insert(Point {
                 x: rng.gen_range(-LINE_LENGTH..width + LINE_LENGTH),
                 y: rng.gen_range(-LINE_LENGTH..height + LINE_LENGTH),
                 vx: angle.cos() * speed,
@@ -162,17 +168,12 @@ impl Model {
             canvas,
             context,
             points,
-            gathered: Grid::new(
-                LINE_LENGTH,
-                LINE_LENGTH,
-                width + LINE_LENGTH * 2.0,
-                height + LINE_LENGTH * 2.0,
-            ),
         }
     }
 
     pub fn update(&mut self, delta: Duration) {
-        let _timer = Timer::new("Model::update");
+        #[cfg(debug_assertions)]
+        let _timer = Timer::from_str("Model::update");
 
         let width = web_sys::window()
             .unwrap()
@@ -189,7 +190,10 @@ impl Model {
         self.canvas.set_width(width as u32);
         self.canvas.set_height(height as u32);
 
-        for point in self.points.iter_mut() {
+        self.points
+            .set_size(width + LINE_LENGTH * 2.0, height + LINE_LENGTH * 2.0);
+
+        self.points.all_mut(|point| {
             point.x += point.vx * delta.as_secs_f32();
             point.y += point.vy * delta.as_secs_f32();
 
@@ -204,11 +208,12 @@ impl Model {
             } else if point.y > height + LINE_LENGTH {
                 point.y -= height + LINE_LENGTH * 2.0;
             }
-        }
+        });
     }
 
     pub fn render(&mut self) {
-        let _timer = Timer::new("Model::render");
+        #[cfg(debug_assertions)]
+        let _timer = Timer::from_str("Model::render");
 
         let width = web_sys::window()
             .unwrap()
@@ -228,27 +233,23 @@ impl Model {
         self.context
             .fill_rect(0.0, 0.0, width.into(), height.into());
 
-        self.gathered.clear();
-        self.gathered
-            .set_size(width + LINE_LENGTH * 2.0, height + LINE_LENGTH * 2.0);
-        for &point in self.points.iter() {
-            self.gathered
-                .all_within(point.x, point.y, LINE_LENGTH, |other, distance_sqr| {
-                    let alpha = ((1.0 - distance_sqr.sqrt() / LINE_LENGTH) * 255.0) as u8;
+        let context = &self.context;
 
-                    self.context.set_stroke_style(&JsValue::from_str(&format!(
-                        "{}{:02x}",
-                        LINE_COLOR, alpha
-                    )));
+        self.points.pairs(|point, other, distance_sqr| {
+            #[cfg(debug_assertions)]
+            let _timer1 = Timer::new(format!("Model::render point={:?} other={:?}", point, other));
 
-                    self.context.begin_path();
+            let alpha = ((1.0 - distance_sqr.sqrt() / LINE_LENGTH) * 255.0) as u8;
 
-                    self.context.move_to(point.x.into(), point.y.into());
-                    self.context.line_to(other.x.into(), other.y.into());
+            context
+                .set_stroke_style(&JsValue::from_str(&format!("{}{:02x}", LINE_COLOR, alpha)));
 
-                    self.context.stroke();
-                });
-            self.gathered.insert(point);
-        }
+            context.begin_path();
+
+            context.move_to(point.x.into(), point.y.into());
+            context.line_to(other.x.into(), other.y.into());
+
+            context.stroke();
+        });
     }
 }

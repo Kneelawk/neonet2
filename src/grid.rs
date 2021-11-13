@@ -1,3 +1,5 @@
+use crate::timer::Timer;
+
 pub struct Grid<P: Positioned + Clone> {
     position_offset: f32,
     chunk_size: f32,
@@ -149,6 +151,9 @@ impl<P: Positioned + Clone> Grid<P> {
     }
 
     pub fn pairs<F: FnMut(&P, &P, f32)>(&mut self, mut f: F) {
+        #[cfg(debug_assertions)]
+        let _timer = Timer::from_str("Grid::pairs");
+
         let max_distance_sqr = self.chunk_size * self.chunk_size;
         let mut try_call = |p: &P, op: &P| {
             let x = p.x() - op.x();
@@ -161,6 +166,9 @@ impl<P: Positioned + Clone> Grid<P> {
 
         let grid_len = self.chunks.len();
         for y in 0..grid_len {
+            #[cfg(debug_assertions)]
+            let _timer = Timer::new(format!("Grid::paris y={}", y));
+
             let strip = &self.chunks[y];
             let next_strip = if y < grid_len - 1 {
                 Some(&self.chunks[y + 1])
@@ -170,6 +178,9 @@ impl<P: Positioned + Clone> Grid<P> {
 
             let strip_len = strip.len();
             for x in 0..strip_len {
+                #[cfg(debug_assertions)]
+                let _timer = Timer::new(format!("Grid::pairs y={} x={}", y, x));
+
                 let chunk = &strip[x];
                 let over = if x < strip_len - 1 {
                     Some(&strip[x + 1])
@@ -184,32 +195,65 @@ impl<P: Positioned + Clone> Grid<P> {
                         None
                     }
                 });
+                let back_below = next_strip.and_then(|next_strip| {
+                    if x > 0 {
+                        Some(&next_strip[x - 1])
+                    } else {
+                        None
+                    }
+                });
 
-                self.tmp.clear();
                 for p in chunk.iter() {
-                    for op in self.tmp.iter() {
-                        try_call(p, op);
-                    }
-                    self.tmp.push(p.clone());
-
-                    if let Some(over) = over {
-                        for op in over.iter() {
+                    {
+                        #[cfg(debug_assertions)]
+                        let _timer = Timer::new(format!("Grid::pairs self-chunk y={} x={}", y, x));
+                        for op in self.tmp.iter() {
                             try_call(p, op);
+                        }
+                        self.tmp.push(p.clone());
+                    }
+
+                    {
+                        #[cfg(debug_assertions)]
+                        let _timer = Timer::new(format!("Grid::pairs over y={} x={}", y, x));
+                        if let Some(over) = over {
+                            for op in over.iter() {
+                                try_call(p, op);
+                            }
                         }
                     }
 
-                    if let Some(below) = below {
-                        for op in below.iter() {
-                            try_call(p, op);
+                    {
+                        #[cfg(debug_assertions)]
+                        let _timer = Timer::new(format!("Grid::pairs below y={} x={}", y, x));
+                        if let Some(below) = below {
+                            for op in below.iter() {
+                                try_call(p, op);
+                            }
                         }
                     }
 
-                    if let Some(over_below) = over_below {
-                        for op in over_below.iter() {
-                            try_call(p, op);
+                    {
+                        #[cfg(debug_assertions)]
+                        let _timer = Timer::new(format!("Grid::pairs over-below y={} x={}", y, x));
+                        if let Some(over_below) = over_below {
+                            for op in over_below.iter() {
+                                try_call(p, op);
+                            }
+                        }
+                    }
+
+                    {
+                        #[cfg(debug_assertions)]
+                        let _timer = Timer::new(format!("Grid::pairs back-below y={} x={}", y, x));
+                        if let Some(back_below) = back_below {
+                            for op in back_below.iter() {
+                                try_call(p, op);
+                            }
                         }
                     }
                 }
+                self.tmp.clear();
             }
         }
     }
