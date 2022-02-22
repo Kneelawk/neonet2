@@ -1,26 +1,72 @@
+#[macro_use]
+extern crate lazy_static;
+#[macro_use]
+extern crate log;
+#[macro_use]
+extern crate thiserror;
+
+mod buffer;
 mod grid;
+mod neonet;
 mod timer;
+mod util;
 
 use crate::{
+    buffer::BufferWrapper,
     grid::{Grid, Positioned},
+    neonet::Model,
     timer::Timer,
+    util::least_power_of_2_greater,
 };
-use rand::{thread_rng, Rng};
-use std::{cell::RefCell, rc::Rc, time::UNIX_EPOCH};
-use wasm_bindgen::{
-    prelude::*,
-    JsCast,
-    __rt::{
-        core::{f32::consts::PI, time::Duration},
-        std::time::SystemTime,
-    },
+use std::{
+    future::Future,
+    process::Output,
+    sync::{Arc, Mutex},
+    time::SystemTime,
 };
-use web_sys::{console, CanvasRenderingContext2d, HtmlCanvasElement};
+use wgpu::{
+    Backends, DeviceDescriptor, Instance, Limits, PresentMode, RequestAdapterOptions,
+    SurfaceConfiguration, TextureUsages,
+};
+use winit::{
+    dpi::PhysicalSize,
+    event::{Event, WindowEvent},
+    event_loop::{ControlFlow, EventLoop},
+    window::{Window, WindowBuilder},
+};
 
-const LINE_LENGTH: f32 = 200f32;
-const POINT_COUNT: u32 = 200;
-const BACKGROUND_COLOR: &str = "#000c18";
-const LINE_COLOR: &str = "#006688";
+lazy_static! {
+    static ref APP_CONTROLLER: Arc<Mutex<AppController>> =
+        Arc::new(Mutex::new(AppController::None));
+    #[cfg(not(target_arch = "wasm32"))]
+    static ref RUNTIME: tokio::runtime::Runtime = tokio::runtime::Runtime::new().unwrap();
+}
+
+#[derive(Debug)]
+enum UserEvent {
+    Shutdown,
+}
+
+enum AppController {
+    #[cfg(target_arch = "wasm32")]
+    Proxy(EventLoopProxy<UserEvent>),
+    None,
+}
+
+// Force `EventLoopProxy` to be `Send` even in WASM contexts, because WASM is single-threaded.
+unsafe impl Send for AppController {}
+
+impl AppController {
+    pub fn shutdown(&self) {
+        match self {
+            #[cfg(target_arch = "wasm32")]
+            AppController::Proxy(proxy) => {
+                proxy.send_event(UserEvent::Shutdown).unwrap();
+            }
+            AppController::None => {}
+        }
+    }
+}
 
 // When the `wee_alloc` feature is enabled, this uses `wee_alloc` as the global
 // allocator.
@@ -31,225 +77,266 @@ const LINE_COLOR: &str = "#006688";
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 // This is like the `main` function, except for JavaScript.
-#[wasm_bindgen(start)]
+#[cfg(target_arch = "wasm32")]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub fn main_js() -> Result<(), JsValue> {
+    wasm_logger::init(Default::default());
+
     // This provides better error messages in debug mode.
     // It's disabled in release mode so it doesn't bloat up the file size.
-    #[cfg(debug_assertions)]
-        console_error_panic_hook::set_once();
+    #[cfg(all(debug_assertions, target_arch = "wasm32"))]
+    console_error_panic_hook::set_once();
 
     Ok(())
 }
 
-#[wasm_bindgen]
-pub fn start_neo_net(canvas_id: &str) {
-    let f: Rc<RefCell<Option<Closure<dyn FnMut()>>>> = Rc::new(RefCell::new(None));
-    let g = f.clone();
-
-    let mut model = Model::new(canvas_id);
-    let mut last_update = now();
-    *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
-        let now = now();
-        let delta = now.duration_since(last_update).unwrap();
-        last_update = now;
-
-        model.update(delta);
-        model.render();
-
-        web_sys::window()
-            .unwrap()
-            .request_animation_frame(f.borrow().as_ref().unwrap().as_ref().unchecked_ref())
-            .unwrap();
-    })));
-
-    web_sys::window()
-        .unwrap()
-        .request_animation_frame(g.borrow().as_ref().unwrap().as_ref().unchecked_ref())
-        .unwrap();
+#[cfg(target_arch = "wasm32")]
+fn block_on<F>(future: F)
+where
+    F: Future<Output = ()>,
+{
+    wasm_bindgen_futures::spawn_local(future);
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+fn block_on<F>(future: F)
+where
+    F: Future<Output = ()>,
+{
+    RUNTIME.block_on(future);
+}
+
+#[cfg(target_arch = "wasm32")]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub async fn start_neonet(canvas_container_id: String, canvas_id: String) {
+    let window = web_sys::window().unwrap();
+    let window_width = window.inner_width().unwrap().as_f64().unwrap() as f32;
+    let window_height = window.inner_height().unwrap().as_f64().unwrap() as f32;
+
+    // Setup window
+    let event_loop = EventLoop::<UserEvent>::with_user_event();
+    *APP_CONTROLLER.lock().unwrap() = AppController::Proxy(event_loop.create_proxy());
+    let window = WindowBuilder::new()
+        .with_inner_size(PhysicalSize::new(window_width, window_height))
+        .build(&event_loop)
+        .unwrap();
+    let window = Arc::new(window);
+
+    // Setup canvas stuff
+    {
+        use winit::platform::web::WindowExtWebSys;
+        info!("Canvas Container ID: {}", &canvas_container_id);
+
+        let canvas = window.canvas();
+        let window = web_sys::window().unwrap();
+        let document = window.document().unwrap();
+        let canvas_container = document
+            .get_element_by_id(&canvas_container_id)
+            .expect("Unable to find Canvas Container Element!");
+        let element = web_sys::Element::from(canvas);
+        element.set_id(&canvas_id);
+        canvas_container.append_child(&element).unwrap();
+    }
+
+    init_impl(event_loop, window, window_width, window_height).await;
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn start_neonet_bin() {
+    let event_loop = EventLoop::<UserEvent>::with_user_event();
+    let window = Arc::new(
+        WindowBuilder::new()
+            .with_inner_size(PhysicalSize::new(1280u32, 720))
+            .with_title("NeoNet 2")
+            .build(&event_loop)
+            .unwrap(),
+    );
+
+    init_impl(event_loop, window, 1280.0, 720.0);
+}
+
+fn init_impl(
+    event_loop: EventLoop<UserEvent>,
+    window: Arc<Window>,
+    window_width: f32,
+    window_height: f32,
+) {
+    info!("Initializing NeoNet...");
+
+    #[cfg(not(target_arch = "wasm32"))]
+    let handle = tokio::runtime::Handle::current();
+
+    // Setup wgpu stuff
+    let instance = Instance::new(Backends::all());
+    let surface = Arc::new(unsafe { instance.create_surface(window.as_ref()) });
+
+    let adapter = block_on(instance
+        .request_adapter(&RequestAdapterOptions {
+            compatible_surface: Some(&surface),
+            force_fallback_adapter: false,
+            power_preference: Default::default(),
+        }))
+        .unwrap();
+
+    let (device, queue) = adapter
+        .request_device(
+            &DeviceDescriptor {
+                limits: Limits::downlevel_webgl2_defaults(),
+                features: Default::default(),
+                label: Some("Device"),
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    let device = Arc::new(device);
+    let queue = Arc::new(queue);
+
+    let preferred_format = surface.get_preferred_format(&adapter).unwrap();
+    let mut surface_config = SurfaceConfiguration {
+        width: window_width as u32,
+        height: window_height as u32,
+        format: preferred_format,
+        usage: TextureUsages::RENDER_ATTACHMENT,
+        present_mode: PresentMode::Mailbox,
+    };
+    surface.configure(&device, &surface_config);
+
+    let model = Arc::new(Mutex::new(Model::new(
+        window_width,
+        window_height,
+        device.clone(),
+        &queue,
+        preferred_format,
+    )));
+
+    #[cfg(target_arch = "wasm32")]
+    let closure = {
+        // Automatic resizing
+        let model = model.clone();
+        let window_ref = window.clone();
+        let surface = surface.clone();
+        let device = device.clone();
+        Closure::wrap(Box::new(move |_e: web_sys::Event| {
+            let window = web_sys::window().unwrap();
+            let width = window.inner_width().unwrap().as_f64().unwrap() as f32;
+            let height = window.inner_height().unwrap().as_f64().unwrap() as f32;
+            window_ref.set_inner_size(PhysicalSize::new(width, height));
+
+            surface_config.width = width as u32;
+            surface_config.height = height as u32;
+            surface.configure(&device, &surface_config);
+
+            let model = model.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                model.borrow_mut().resize(width, height).await;
+            });
+        }) as Box<dyn FnMut(_)>)
+    };
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        web_sys::window()
+            .unwrap()
+            .add_event_listener_with_callback("resize", closure.as_ref().unchecked_ref())
+            .unwrap();
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    let mut last_update = now();
+    #[cfg(not(target_arch = "wasm32"))]
+    let mut last_update = SystemTime::now();
+    event_loop.run(move |event, _, control_flow| {
+        #[cfg(target_arch = "wasm32")]
+        let _ = &closure;
+        match event {
+            #[cfg(not(target_arch = "wasm32"))]
+            Event::WindowEvent {
+                event:
+                    WindowEvent::Resized(size)
+                    | WindowEvent::ScaleFactorChanged {
+                        new_inner_size: &mut size,
+                        ..
+                    },
+                ..
+            } => {
+                surface_config.width = size.width;
+                surface_config.height = size.height;
+                surface.configure(&device, &surface_config);
+
+                let model = model.clone();
+                handle.block_on(async move {
+                    model.lock().unwrap().resize(size.width as f32, size.height as f32).await;
+                });
+            }
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } | Event::UserEvent(UserEvent::Shutdown) => {
+                *control_flow = ControlFlow::Exit;
+            }
+            Event::RedrawRequested(_) => {
+                #[cfg(target_arch = "wasm32")]
+                let now = now();
+                #[cfg(not(target_arch = "wasm32"))]
+                let now = SystemTime::now();
+                let delta = now.duration_since(last_update).unwrap();
+                last_update = now;
+
+                match surface.get_current_texture() {
+                    Ok(output) => {
+                        let view = output.texture.create_view(&Default::default());
+
+                        let model = model.clone();
+                        let queue = queue.clone();
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            wasm_bindgen_futures::spawn_local(async move {
+                                model.lock().unwrap().update(delta).await;
+                                model.lock().unwrap().render(&queue, &view);
+                            });
+                        }
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            handle.block_on(async move {
+                                model.lock().unwrap().update(delta).await;
+                                model.lock().unwrap().render(&queue, &view);
+                            });
+                        }
+                    }
+                    Err(err) => {
+                        error!("Error getting texture: {:?}", err);
+                    }
+                }
+            }
+            Event::RedrawEventsCleared => {
+                window.request_redraw();
+            }
+            Event::LoopDestroyed => {
+                // Remove the canvas element we appended earlier
+                #[cfg(target_arch = "wasm32")]
+                {
+                    let window = web_sys::window().unwrap();
+                    let document = window.document().unwrap();
+                    let canvas = document.get_element_by_id(&canvas_id).expect("Unable to find canvas element when shutting down. The canvas element has either already been removed or will not be removed.");
+                    canvas.remove();
+                }
+            }
+            _ => {}
+        }
+    });
+}
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub fn stop_neonet() {
+    APP_CONTROLLER.lock().unwrap().shutdown();
+}
+
+#[cfg(target_arch = "wasm32")]
 fn now() -> SystemTime {
     let performance = web_sys::window().unwrap().performance().unwrap();
     let amt = performance.now();
     let secs = (amt as u64) / 1_000;
     let nanos = ((amt as u32) % 1_000) * 1_000_000;
     UNIX_EPOCH + Duration::new(secs, nanos)
-}
-
-struct Model {
-    canvas: HtmlCanvasElement,
-    context: CanvasRenderingContext2d,
-    points: Grid<Point>,
-}
-
-#[derive(Debug, Copy, Clone)]
-struct Point {
-    x: f32,
-    y: f32,
-    vx: f32,
-    vy: f32,
-}
-
-impl Positioned for Point {
-    fn x(&self) -> f32 {
-        self.x
-    }
-
-    fn y(&self) -> f32 {
-        self.y
-    }
-
-    fn x_mut(&mut self) -> &mut f32 {
-        &mut self.x
-    }
-
-    fn y_mut(&mut self) -> &mut f32 {
-        &mut self.y
-    }
-}
-
-impl Model {
-    pub fn new(canvas_id: &str) -> Model {
-        let document = web_sys::window().unwrap().document().unwrap();
-        let canvas = document
-            .get_element_by_id(canvas_id)
-            .unwrap()
-            .dyn_into::<HtmlCanvasElement>()
-            .unwrap();
-
-        console::log_1(&JsValue::from_str("Initializing NeoNet..."));
-        console::log_1(&JsValue::from_str(&format!("Canvas ID: {}", canvas_id)));
-
-        let context = canvas
-            .get_context("2d")
-            .unwrap()
-            .unwrap()
-            .dyn_into::<web_sys::CanvasRenderingContext2d>()
-            .unwrap();
-
-        let width = web_sys::window()
-            .unwrap()
-            .inner_width()
-            .unwrap()
-            .as_f64()
-            .unwrap() as f32;
-        let height = web_sys::window()
-            .unwrap()
-            .inner_height()
-            .unwrap()
-            .as_f64()
-            .unwrap() as f32;
-        canvas.set_width(width as u32);
-        canvas.set_height(height as u32);
-
-        context
-            .set_global_composite_operation("destination-atop")
-            .unwrap();
-
-        let mut points = Grid::new(
-            LINE_LENGTH,
-            LINE_LENGTH,
-            width + LINE_LENGTH * 2.0,
-            height + LINE_LENGTH * 2.0,
-        );
-        let mut rng = thread_rng();
-        for _i in 0..POINT_COUNT {
-            let angle = rng.gen_range(0.0..(PI * 2.0));
-            let speed = rng.gen_range(20.0..100.0f32);
-            points.insert(Point {
-                x: rng.gen_range(-LINE_LENGTH..width + LINE_LENGTH),
-                y: rng.gen_range(-LINE_LENGTH..height + LINE_LENGTH),
-                vx: angle.cos() * speed,
-                vy: angle.sin() * speed,
-            })
-        }
-
-        Model {
-            canvas,
-            context,
-            points,
-        }
-    }
-
-    pub fn update(&mut self, delta: Duration) {
-        #[cfg(debug_assertions)]
-        let _timer = Timer::from_str("Model::update");
-
-        let width = web_sys::window()
-            .unwrap()
-            .inner_width()
-            .unwrap()
-            .as_f64()
-            .unwrap() as f32;
-        let height = web_sys::window()
-            .unwrap()
-            .inner_height()
-            .unwrap()
-            .as_f64()
-            .unwrap() as f32;
-        self.canvas.set_width(width as u32);
-        self.canvas.set_height(height as u32);
-
-        self.points
-            .set_size(width + LINE_LENGTH * 2.0, height + LINE_LENGTH * 2.0);
-
-        self.points.all_mut(|point| {
-            point.x += point.vx * delta.as_secs_f32();
-            point.y += point.vy * delta.as_secs_f32();
-
-            if point.x < -LINE_LENGTH {
-                point.x += width + LINE_LENGTH * 2.0;
-            } else if point.x > width + LINE_LENGTH {
-                point.x -= width + LINE_LENGTH * 2.0;
-            }
-
-            if point.y < -LINE_LENGTH {
-                point.y += height + LINE_LENGTH * 2.0;
-            } else if point.y > height + LINE_LENGTH {
-                point.y -= height + LINE_LENGTH * 2.0;
-            }
-        });
-    }
-
-    pub fn render(&mut self) {
-        #[cfg(debug_assertions)]
-        let _timer = Timer::from_str("Model::render");
-
-        let width = web_sys::window()
-            .unwrap()
-            .inner_width()
-            .unwrap()
-            .as_f64()
-            .unwrap() as f32;
-        let height = web_sys::window()
-            .unwrap()
-            .inner_height()
-            .unwrap()
-            .as_f64()
-            .unwrap() as f32;
-
-        self.context
-            .set_fill_style(&JsValue::from_str(BACKGROUND_COLOR));
-        self.context
-            .fill_rect(0.0, 0.0, width.into(), height.into());
-
-        let context = &self.context;
-
-        self.points.pairs(|point, other, distance_sqr| {
-            #[cfg(debug_assertions)]
-            let _timer1 = Timer::new(format!("Model::render point={:?} other={:?}", point, other));
-
-            let alpha = ((1.0 - distance_sqr.sqrt() / LINE_LENGTH) * 255.0) as u8;
-
-            context
-                .set_stroke_style(&JsValue::from_str(&format!("{}{:02x}", LINE_COLOR, alpha)));
-
-            context.begin_path();
-
-            context.move_to(point.x.into(), point.y.into());
-            context.line_to(other.x.into(), other.y.into());
-
-            context.stroke();
-        });
-    }
 }

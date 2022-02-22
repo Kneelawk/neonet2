@@ -1,15 +1,22 @@
 # You must change these to your own details.
 [package]
-name = "hello-wasm"
-description = "My first real attempt at creating something cool with web-sys!"
-version = "0.1.0"
+name = "neonet2"
+description = "Improved version of my neonet screen-saver, now for WASM!"
+version = "0.1.1"
 authors = ["Kneelawk <kneelawk@gmail.com>"]
+license = "MIT"
 categories = ["wasm"]
+keywords = ["wasm", "wgpu"]
 readme = "README.md"
-edition = "2018"
+edition = "2021"
+resolver = "2"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "neonet2"
+path = "src/main.rs"
 
 [profile.release]
 # This makes the compiled code faster and smaller, but it makes compiling slower,
@@ -19,14 +26,46 @@ lto = true
 [features]
 # If you uncomment this line, it will enable `wee_alloc`:
 #default = ["wee_alloc"]
+wee_alloc = ["dep:wee_alloc"]
 
 [dependencies]
-rand = "^0.8.5"
+bytemuck = "^1.7.3"
 getrandom = { version = "^0.2.4", features = ["js"] }
+rand = "^0.8.5"
+thiserror = "^1.0.30"
+lazy_static = "^1.4.0"
+log = "^0.4.14"
+
+# `winit` crate to allow `wgpu` to use the html canvas element.
+winit = "^0.26.1"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+dotenv = "^0.15.0"
+env_logger = "^0.9.0"
+wgpu = "^0.12.0"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.tokio]
+version = "^1.17.0"
+features = [
+    "rt", "rt-multi-thread", "macros"
+]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+
+# The `console_error_panic_hook` crate provides better debugging of panics by
+# logging them with `console.error`. This is great for development, but requires
+# all the `std::fmt` and `std::panicking` infrastructure, so it's only enabled
+# in debug mode.
+console_error_panic_hook = "0.1.7"
 
 # The `wasm-bindgen` crate provides the bare minimum functionality needed
 # to interact with JavaScript.
 wasm-bindgen = "0.2.79"
+
+# `wasm-bindgen-futures` allows us to have our start method be async.
+wasm-bindgen-futures = "0.4.29"
+
+wasm-logger = "^0.2.0"
 
 # `wee_alloc` is a tiny allocator for wasm that is only ~1K in code size
 # compared to the default allocator's ~10K. However, it is slower than the default
@@ -35,10 +74,9 @@ wee_alloc = { version = "0.4.5", optional = true }
 
 # The `web-sys` crate allows you to interact with the various browser APIs,
 # like the DOM.
-[dependencies.web-sys]
+[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
 version = "0.3.56"
 features = [
-    'CanvasRenderingContext2d',
     'Document',
     'Element',
     'HtmlCanvasElement',
@@ -47,16 +85,15 @@ features = [
     'console'
 ]
 
-# The `console_error_panic_hook` crate provides better debugging of panics by
-# logging them with `console.error`. This is great for development, but requires
-# all the `std::fmt` and `std::panicking` infrastructure, so it's only enabled
-# in debug mode.
-[target."cfg(debug_assertions)".dependencies]
-console_error_panic_hook = "0.1.7"
+# `wgpu` crate to allow for advanced rendering API.
+[target.'cfg(target_arch = "wasm32")'.dependencies.wgpu]
+version = "0.12.0"
+features = [
+    "webgl"
+]
 
 # These crates are used for running unit tests.
-[dev-dependencies]
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3.29"
 futures = "0.3.21"
 js-sys = "0.3.56"
-wasm-bindgen-futures = "0.4.29"
