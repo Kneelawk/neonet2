@@ -38,10 +38,11 @@ var<uniform> vertices: Vertices;
 fn vert_main(index: VertexIndex) -> VertexOutput {
     var output: VertexOutput;
     var me = vertices.vertices[index.me];
-    var x = me.position.x / uniform_data.screen_width * 2.0 + 1.0;
-    var y = me.position.y / uniform_data.screen_height * 2.0 + 1.0;
+    var x = me.position.x / uniform_data.screen_width * 2.0 - 1.0;
+    var y = me.position.y / uniform_data.screen_height * 2.0 - 1.0;
     output.position = vec4<f32>(x, y, 0.0, 1.0);
-    output.color = vec4<f32>(me.color, 1.0);
+    var distance = sqrt(index.distance_sqr);
+    output.color = vec4<f32>(me.color, 1.0 - distance / line_length);
     return output;
 }
 

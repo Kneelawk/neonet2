@@ -1,4 +1,10 @@
-use crate::{least_power_of_2_greater, BufferWrapper, Grid, Positioned, Timer};
+use crate::{
+    buffer::BufferWrapper,
+    flow::{FlowModel, FlowModelInit},
+    grid::{Grid, Positioned},
+    timer::Timer,
+    util::least_power_of_2_greater,
+};
 use bytemuck::{Pod, Zeroable};
 use rand::{thread_rng, Rng};
 use std::{borrow::Cow, f32::consts::PI, mem::size_of, sync::Arc, time::Duration};
@@ -9,22 +15,23 @@ use wgpu::{
     CommandEncoderDescriptor, Device, FragmentState, FrontFace, LoadOp, MultisampleState,
     Operations, PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, Queue,
     RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
-    ShaderModuleDescriptor, ShaderSource, ShaderStages, TextureFormat, TextureView,
-    VertexAttribute, VertexBufferLayout, VertexState, VertexStepMode,
+    ShaderModuleDescriptor, ShaderSource, ShaderStages, TextureView, VertexAttribute,
+    VertexBufferLayout, VertexState, VertexStepMode,
 };
+use winit::dpi::PhysicalSize;
 
 const LINE_LENGTH: f32 = 200f32;
 const POINT_COUNT: usize = 200;
-const BACKGROUND_COLOR: Color = Color { r: 0.0, g: 0.047, b: 0.094, a: 1.0 };
-const LINE_COLOR: Color = Color { r: 0.0, g: 0.4, b: 0.533, a: 1.0 };
+const BACKGROUND_COLOR: Color = Color { r: 0.0, g: 0.005, b: 0.01, a: 1.0 };
+const LINE_COLOR: Color = Color { r: 0.0, g: 0.4, b: 0.6, a: 1.0 };
 
 const SHADER_SRC: &str = include_str!("shader.wgsl");
 
-pub struct Model {
-    width: f32,
-    height: f32,
+pub struct NeonetApp {
+    size: PhysicalSize<f32>,
     points: Grid<Point>,
     device: Arc<Device>,
+    queue: Arc<Queue>,
     queued_commands: Vec<CommandBuffer>,
     uniform_buffer: BufferWrapper<UniformData>,
     vertex_buffer_tmp: Vec<GPUPoint>,
@@ -62,11 +69,19 @@ impl Positioned for Point {
     }
 }
 
+#[repr(C, align(16))]
+#[derive(Debug, Copy, Clone)]
+struct GPUPosition([f32; 2]);
+
+#[repr(C, align(16))]
+#[derive(Debug, Copy, Clone)]
+struct GPUColor([f32; 3]);
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 struct GPUPoint {
-    position: [f32; 2],
-    color: [f32; 3],
+    position: GPUPosition,
+    color: GPUColor,
 }
 
 unsafe impl Zeroable for GPUPoint {}
@@ -75,12 +90,12 @@ unsafe impl Pod for GPUPoint {}
 impl GPUPoint {
     fn from(point: Point) -> GPUPoint {
         GPUPoint {
-            position: [point.x, point.y],
-            color: [
+            position: GPUPosition([point.x, point.y]),
+            color: GPUColor([
                 LINE_COLOR.r as f32,
                 LINE_COLOR.g as f32,
                 LINE_COLOR.b as f32,
-            ],
+            ]),
         }
     }
 }
@@ -119,14 +134,16 @@ impl PointIndex {
     }
 }
 
-impl Model {
-    pub fn new(
-        width: f32,
-        height: f32,
-        device: Arc<Device>,
-        queue: &Queue,
-        texture_format: TextureFormat,
-    ) -> Model {
+#[async_trait]
+impl FlowModel for NeonetApp {
+    async fn init(init: FlowModelInit) -> NeonetApp {
+        let size = init.window_size;
+        let width = size.width;
+        let height = size.height;
+        let queue = init.queue;
+        let device = init.device;
+        let frame_format = init.frame_format;
+
         let mut vertex_buffer_tmp = vec![];
         vertex_buffer_tmp.reserve(POINT_COUNT);
 
@@ -243,7 +260,7 @@ impl Model {
                 module: &shader,
                 entry_point: "frag_main",
                 targets: &[ColorTargetState {
-                    format: texture_format,
+                    format: frame_format,
                     blend: Some(BlendState::ALPHA_BLENDING),
                     write_mask: ColorWrites::ALL,
                 }],
@@ -266,11 +283,11 @@ impl Model {
             multiview: None,
         });
 
-        Model {
-            width,
-            height,
+        NeonetApp {
+            size,
             points,
             device,
+            queue,
             queued_commands: vec![],
             uniform_buffer,
             vertex_buffer_tmp,
@@ -282,19 +299,20 @@ impl Model {
         }
     }
 
-    pub async fn resize(&mut self, width: f32, height: f32) {
-        self.width = width;
-        self.height = height;
-        self.points
-            .set_size(width + LINE_LENGTH * 2.0, height + LINE_LENGTH * 2.0);
+    async fn resize(&mut self, size: PhysicalSize<f32>) {
+        self.size = size;
+        self.points.set_size(
+            size.width + LINE_LENGTH * 2.0,
+            size.height + LINE_LENGTH * 2.0,
+        );
 
         self.queued_commands.push(
             self.uniform_buffer
                 .replace_all(
                     &self.device,
                     &[UniformData {
-                        screen_width: width,
-                        screen_height: height,
+                        screen_width: size.width,
+                        screen_height: size.height,
                     }],
                 )
                 .await
@@ -302,7 +320,7 @@ impl Model {
         );
     }
 
-    pub async fn update(&mut self, delta: Duration) {
+    async fn update(&mut self, delta: Duration) {
         #[cfg(debug_assertions)]
         let _timer = Timer::from_str("Model::update");
 
@@ -313,15 +331,15 @@ impl Model {
             point.y += point.vy * delta.as_secs_f32();
 
             if point.x < -LINE_LENGTH {
-                point.x += self.width + LINE_LENGTH * 2.0;
-            } else if point.x > self.width + LINE_LENGTH {
-                point.x -= self.width + LINE_LENGTH * 2.0;
+                point.x += self.size.width + LINE_LENGTH * 2.0;
+            } else if point.x > self.size.width + LINE_LENGTH {
+                point.x -= self.size.width + LINE_LENGTH * 2.0;
             }
 
             if point.y < -LINE_LENGTH {
-                point.y += self.height + LINE_LENGTH * 2.0;
-            } else if point.y > self.height + LINE_LENGTH {
-                point.y -= self.height + LINE_LENGTH * 2.0;
+                point.y += self.size.height + LINE_LENGTH * 2.0;
+            } else if point.y > self.size.height + LINE_LENGTH {
+                point.y -= self.size.height + LINE_LENGTH * 2.0;
             }
 
             self.vertex_buffer_tmp[point.index] = GPUPoint::from(*point);
@@ -377,7 +395,7 @@ impl Model {
         }
     }
 
-    pub fn render(&mut self, queue: &Queue, view: &TextureView) {
+    async fn render(&mut self, view: &TextureView, _delta: Duration) {
         #[cfg(debug_assertions)]
         let _timer = Timer::from_str("Model::render");
 
@@ -410,6 +428,8 @@ impl Model {
 
         self.queued_commands.push(encoder.finish());
 
-        queue.submit(self.queued_commands.drain(..));
+        self.queue.submit(self.queued_commands.drain(..));
     }
+
+    async fn shutdown(self) {}
 }

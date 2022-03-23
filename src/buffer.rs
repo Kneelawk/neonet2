@@ -143,7 +143,8 @@ impl<D: Encodable + Sized> BufferWrapper<D> {
             let staging_slice = staging_buffer.slice(..);
             staging_slice.map_async(MapMode::Write).await?;
             let mut mapping = staging_slice.get_mapped_range_mut();
-            D::encode_slice(data, mapping.as_mut());
+            let copy_size = (data_len as usize) * D::size();
+            D::encode_slice(data, &mut mapping[..copy_size]);
         }
 
         staging_buffer.unmap();
