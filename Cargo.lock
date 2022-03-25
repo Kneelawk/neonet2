@@ -888,6 +888,7 @@ dependencies = [
  "lazy_static",
  "log",
  "rand",
+ "raw-window-handle",
  "thiserror",
  "tokio",
  "wasm-bindgen",

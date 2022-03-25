@@ -2,7 +2,6 @@ use crate::{
     buffer::BufferWrapper,
     flow::{FlowModel, FlowModelInit},
     grid::{Grid, Positioned},
-    timer::Timer,
     util::least_power_of_2_greater,
 };
 use bytemuck::{Pod, Zeroable};
@@ -19,6 +18,9 @@ use wgpu::{
     VertexBufferLayout, VertexState, VertexStepMode,
 };
 use winit::dpi::PhysicalSize;
+
+#[cfg(feature = "timer")]
+use crate::timer::Timer;
 
 const LINE_LENGTH: f32 = 200f32;
 const POINT_COUNT: usize = 200;
@@ -321,7 +323,7 @@ impl FlowModel for NeonetApp {
     }
 
     async fn update(&mut self, delta: Duration) {
-        #[cfg(debug_assertions)]
+        #[cfg(feature = "timer")]
         let _timer = Timer::from_str("Model::update");
 
         // Move the points
@@ -356,8 +358,8 @@ impl FlowModel for NeonetApp {
 
         self.index_buffer_tmp.clear();
         self.points.pairs(|point, other, distance_sqr| {
-            #[cfg(debug_assertions)]
-            let _timer1 = Timer::new(format!("Model::render point={:?} other={:?}", point, other));
+            // #[cfg(debug_assertions)]
+            // let _timer1 = Timer::new(format!("Model::render point={:?} other={:?}", point, other));
             // let alpha = ((1.0 - distance_sqr.sqrt() / LINE_LENGTH) * 255.0) as u8;
 
             self.index_buffer_tmp.push(PointIndex {
@@ -395,8 +397,8 @@ impl FlowModel for NeonetApp {
         }
     }
 
-    async fn render(&mut self, view: &TextureView, _delta: Duration) {
-        #[cfg(debug_assertions)]
+    fn render(&mut self, view: &TextureView, _delta: Duration) {
+        #[cfg(feature = "timer")]
         let _timer = Timer::from_str("Model::render");
 
         let mut encoder = self
@@ -431,5 +433,5 @@ impl FlowModel for NeonetApp {
         self.queue.submit(self.queued_commands.drain(..));
     }
 
-    async fn shutdown(self) {}
+    fn shutdown(&mut self) {}
 }

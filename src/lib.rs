@@ -14,8 +14,10 @@ mod controller;
 pub mod flow;
 mod grid;
 pub mod neonet;
-mod timer;
 mod util;
+
+#[cfg(feature = "timer")]
+mod timer;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::{wasm_bindgen, JsValue};
@@ -32,7 +34,7 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 #[cfg(target_arch = "wasm32")]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub fn main_js() -> Result<(), JsValue> {
-    wasm_logger::init(Default::default());
+    wasm_logger::init(wasm_logger::Config::new(log::Level::Info));
 
     // This provides better error messages in debug mode.
     // It's disabled in release mode so it doesn't bloat up the file size.
@@ -44,16 +46,11 @@ pub fn main_js() -> Result<(), JsValue> {
 
 #[cfg(target_arch = "wasm32")]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-pub async fn start_neonet(canvas_container_id: String, canvas_id: String) {
-    flow::WebFlow::new()
+pub async fn start_neonet(canvas_container_id: String, canvas_id: String) -> flow::WebFlow {
+    flow::WebFlowBuilder::new()
         .canvas_container_id(canvas_container_id)
         .canvas_id(canvas_id)
         .start::<neonet::NeonetApp>()
         .await
-        .unwrap();
-}
-
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-pub fn stop_neonet() {
-    controller::APP_CONTROLLER.lock().unwrap().shutdown();
+        .unwrap()
 }

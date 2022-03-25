@@ -1,11 +1,11 @@
 //! Web-Specific Flow implementation.
 
 use crate::{
-    controller::{AppController, APP_CONTROLLER},
-    flow::{FlowModel, FlowModelInit, FlowSignal, FlowStartError},
+    flow::{FlowModel, FlowModelInit, FlowStartError},
 };
-use async_channel::Sender;
 use futures::lock::Mutex;
+use js_sys::Promise;
+use raw_window_handle::{HasRawWindowHandle, RawWindowHandle, WebHandle};
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -13,30 +13,28 @@ use std::{
     },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use wasm_bindgen::{closure::Closure, JsCast};
+use wasm_bindgen::{prelude::wasm_bindgen, JsCast, JsValue};
+use wasm_bindgen_futures::future_to_promise;
 use wasm_timer::Delay;
+use web_sys::{Element, HtmlCanvasElement};
 use wgpu::{
-    Backends, DeviceDescriptor, Instance, Limits, Maintain, PresentMode, RequestAdapterOptions,
-    SurfaceConfiguration, TextureFormat, TextureUsages,
+    Backends, Device, DeviceDescriptor, Instance, Limits, Maintain, PresentMode, Queue,
+    RequestAdapterOptions, Surface, SurfaceConfiguration, TextureFormat, TextureUsages,
 };
 use winit::{
     dpi::PhysicalSize,
-    event::Event,
-    event_loop::{ControlFlow, EventLoop},
-    platform::web::WindowExtWebSys,
-    window::WindowBuilder,
 };
 
 /// Used to manage a web application's control flow as well as integration with
 /// the canvas and WGPU.
-pub struct WebFlow {
+pub struct WebFlowBuilder {
     canvas_container_id: String,
     canvas_id: String,
 }
 
-impl WebFlow {
-    pub fn new() -> WebFlow {
-        WebFlow {
+impl WebFlowBuilder {
+    pub fn new() -> WebFlowBuilder {
+        WebFlowBuilder {
             canvas_container_id: "canvas-container".to_string(),
             canvas_id: "canvas".to_string(),
         }
@@ -52,43 +50,50 @@ impl WebFlow {
         self
     }
 
-    pub async fn start<Model: FlowModel + 'static>(self) -> Result<!, FlowStartError> {
+    pub async fn start<Model: FlowModel + 'static>(self) -> Result<WebFlow, FlowStartError> {
+        let Self { canvas_container_id, canvas_id } = self;
+
         info!("Getting window data...");
         let web_window = web_sys::window().unwrap();
         let window_width = web_window.inner_width().unwrap().as_f64().unwrap() as f32;
         let window_height = web_window.inner_height().unwrap().as_f64().unwrap() as f32;
         let window_size = PhysicalSize::new(window_width, window_height);
 
-        info!("Creating event loop...");
-        let event_loop = EventLoop::<FlowSignal>::with_user_event();
-        *APP_CONTROLLER.lock().unwrap() = AppController::Proxy(event_loop.create_proxy());
-
-        info!("Creating window...");
-        let window = WindowBuilder::new()
-            .with_inner_size(window_size)
-            .build(&event_loop)?;
-        let window = Arc::new(window);
+        let window_id = 1;
+        let window_handle = CanvasHandleWrapper(window_id);
 
         info!("Setting up canvas...");
-        {
-            info!("Canvas container id: {}", &self.canvas_container_id);
-            info!("Canvas id: {}", &self.canvas_id);
+        let canvas = {
+            info!("Canvas container id: {}", &canvas_container_id);
+            info!("Canvas id: {}", &canvas_id);
 
-            let canvas = window.canvas();
             let document = web_window.document().unwrap();
             let canvas_container = document
-                .get_element_by_id(&self.canvas_container_id)
+                .get_element_by_id(&canvas_container_id)
                 .expect("Unable to find canvas container element");
-            let canvas_element = web_sys::Element::from(canvas);
-            canvas_element.set_id(&self.canvas_id);
+
+            let canvas_element = document.create_element("canvas").unwrap();
+            canvas_element.set_id(&canvas_id);
+            canvas_element.set_attribute("tabindex", "0").unwrap();
+
+            // get WGPU to recognize the canvas
+            canvas_element
+                .set_attribute("data-raw-handle", &window_id.to_string())
+                .unwrap();
+
+            // set size
+            set_canvas_size(&canvas_element, &window_size);
+
             canvas_container.append_child(&canvas_element).unwrap();
-        }
+
+            canvas_element.unchecked_into()
+        };
 
         info!("Creating instance...");
         let instance = Arc::new(Instance::new(Backends::all()));
 
         info!("Creating surface...");
-        let surface = Arc::new(unsafe { instance.create_surface(window.as_ref()) });
+        let surface = Arc::new(unsafe { instance.create_surface(&window_handle) });
 
         info!("Requesting adapter...");
         let adapter = instance
@@ -119,9 +124,11 @@ impl WebFlow {
         let poll_device = device.clone();
         let poll_status = status.clone();
         wasm_bindgen_futures::spawn_local(async move {
+            info!("Poll task spawned.");
             while poll_status.load(Ordering::Acquire) {
+                // Docs say this isn't required on web, but my app locks up without it
                 poll_device.poll(Maintain::Poll);
-                Delay::new(Duration::from_millis(50)).await.unwrap();
+                Delay::new(Duration::from_millis(1)).await.unwrap();
             }
             info!("Poll task completed.");
         });
@@ -129,7 +136,7 @@ impl WebFlow {
         info!("Configuring surface...");
         let preferred_format = surface.get_preferred_format(&adapter);
         info!("Preferred render frame format: {:?}", preferred_format);
-        let mut config = SurfaceConfiguration {
+        let config = SurfaceConfiguration {
             usage: TextureUsages::RENDER_ATTACHMENT,
             format: preferred_format.unwrap_or(TextureFormat::Bgra8UnormSrgb),
             width: window_size.width as u32,
@@ -147,140 +154,129 @@ impl WebFlow {
             window_size,
             frame_format: config.format,
         };
-        let model: Arc<Mutex<Option<Model>>> = Arc::new(Mutex::new(Some(Model::init(init).await)));
+        let model: Arc<Mutex<dyn FlowModel>> = Arc::new(Mutex::new(Model::init(init).await));
 
-        info!("Starting resize task...");
-        let closure = {
-            // Automatic resizing
-            let model = model.clone();
-            let window = window.clone();
-            let surface = surface.clone();
-            let device = device.clone();
-            Closure::wrap(Box::new(move |_e: web_sys::Event| {
-                let web_window = web_sys::window().unwrap();
-                let size = PhysicalSize::new(
-                    web_window.inner_width().unwrap().as_f64().unwrap() as f32,
-                    web_window.inner_height().unwrap().as_f64().unwrap() as f32,
-                );
-                window.set_inner_size(size);
+        let previous_render = now();
 
-                config.width = size.width as u32;
-                config.height = size.height as u32;
-                surface.configure(&device, &config);
-
-                let model = model.clone();
-                wasm_bindgen_futures::spawn_local(async move {
-                    model.lock().await.as_mut().unwrap().resize(size).await;
-                });
-            }) as Box<dyn FnMut(_)>)
-        };
-
-        web_window
-            .add_event_listener_with_callback("resize", closure.as_ref().unchecked_ref())
-            .unwrap();
-
-        let mut previous_update = now();
-        let mut previous_render = now();
-
-        let mut instance = Some(instance);
-        let mut adapter = Some(adapter);
-        let mut queue = Some(queue);
-
-        let (tx, rx) = async_channel::unbounded();
-        let mut tx = Some(tx);
-
-        info!("Launching app task...");
-        wasm_bindgen_futures::spawn_local(async move {
-            while let Ok(event) = rx.recv().await {
-                match event {
-                    Event::MainEventsCleared => {
-                        let now = now();
-                        let delta = now.duration_since(previous_update).unwrap();
-                        previous_update = now;
-
-                        model.lock().await.as_mut().unwrap().update(delta).await;
-                    },
-                    Event::RedrawRequested(_) => {
-                        let now = now();
-                        let delta = now.duration_since(previous_render).unwrap();
-                        previous_render = now;
-
-                        match surface.get_current_texture() {
-                            Ok(output) => {
-                                let view = output.texture.create_view(&Default::default());
-
-                                model
-                                    .lock()
-                                    .await
-                                    .as_mut()
-                                    .unwrap()
-                                    .render(&view, delta)
-                                    .await;
-                            },
-                            Err(err) => {
-                                error!("Error getting texture: {:?}", err);
-                            },
-                        }
-                    },
-                    Event::LoopDestroyed => {
-                        info!("Shutting down...");
-
-                        model.lock().await.take().unwrap().shutdown().await;
-
-                        status.store(false, Ordering::Release);
-
-                        // shutdown WGPU
-                        drop(queue.take());
-                        drop(adapter.take());
-                        drop(instance.take());
-
-                        info!("Removing canvas: {}...", &self.canvas_id);
-                        let web_window = web_sys::window().unwrap();
-                        let document = web_window.document().unwrap();
-                        let canvas = document.get_element_by_id(&self.canvas_id).expect("Unable to find canvas element when shutting down. The canvas element has either already been removed or will not be removed.");
-                        canvas.remove();
-
-                        info!("Done.");
-                    },
-                    _ => {},
-                }
-            }
-        });
-
-        info!("Starting event loop...");
-        event_loop.run(move |event, _, control_flow| match event {
-            Event::UserEvent(user_event) => {
-                match user_event {
-                    FlowSignal::Exit => {
-                        *control_flow = ControlFlow::Exit;
-                    },
-                }
-                send(&tx, event);
-            },
-            Event::MainEventsCleared => {
-                send(&tx, event);
-                window.request_redraw();
-            },
-            Event::LoopDestroyed => {
-                drop(tx.take());
-                send(&tx, event);
-            },
-            _ => {
-                send(&tx, event);
-            },
-        });
+        Ok(WebFlow {
+            canvas,
+            _instance: instance,
+            poll_control: status,
+            surface,
+            device,
+            _queue: queue,
+            config,
+            model,
+            previous_render,
+        })
     }
 }
 
-fn send(tx: &Option<Sender<Event<FlowSignal>>>, event: Event<FlowSignal>) {
-    if let Some(tx) = tx.as_ref() {
-        // The only event lost here is the re-scale event, but we handle those already.
-        if let Some(event) = event.to_static() {
-            // channel should never be full
-            tx.try_send(event)
-                .expect("Error sending event to app thread.");
-        }
+#[wasm_bindgen]
+pub struct WebFlow {
+    canvas: HtmlCanvasElement,
+    _instance: Arc<Instance>,
+    poll_control: Arc<AtomicBool>,
+    surface: Arc<Surface>,
+    device: Arc<Device>,
+    _queue: Arc<Queue>,
+    config: SurfaceConfiguration,
+    model: Arc<Mutex<dyn FlowModel>>,
+    previous_render: SystemTime,
+}
+
+#[wasm_bindgen]
+impl WebFlow {
+    pub fn resize(&self, width: f32, height: f32) -> Promise {
+        let canvas = self.canvas.clone();
+        let model = self.model.clone();
+        let surface = self.surface.clone();
+        let device = self.device.clone();
+        let mut config = self.config.clone();
+
+        future_to_promise(async move {
+            info!("Resizing: {}x{}", width, height);
+            let window_size = PhysicalSize::new(width, height);
+
+            set_canvas_size(&canvas, &window_size);
+            config.width = width as u32;
+            config.height = height as u32;
+            surface.configure(&device, &config);
+
+            model.lock().await.resize(window_size).await;
+
+            Ok(JsValue::undefined())
+        })
     }
+
+    pub fn render(&mut self) -> Promise {
+        let model = self.model.clone();
+        let surface = self.surface.clone();
+
+        let now = now();
+        let delta = now.duration_since(self.previous_render).unwrap();
+        self.previous_render = now;
+
+        future_to_promise(async move {
+            info!("Rendering...");
+
+            let mut model = model.lock().await;
+            model.update(delta).await;
+
+            match surface.get_current_texture() {
+                Ok(output) => {
+                    let view = output.texture.create_view(&Default::default());
+
+                    model.render(&view, delta);
+
+                    output.present();
+                },
+                Err(err) => {
+                    error!("Error getting texture: {:?}", err);
+                },
+            }
+
+            Ok(JsValue::undefined())
+        })
+    }
+}
+
+impl Drop for WebFlow {
+    fn drop(&mut self) {
+        info!("Stopping poll task...");
+        self.poll_control.store(false, Ordering::Release);
+
+        info!("Removing canvas...");
+        self.canvas.remove();
+    }
+}
+
+struct CanvasHandleWrapper(u32);
+
+unsafe impl HasRawWindowHandle for CanvasHandleWrapper {
+    fn raw_window_handle(&self) -> RawWindowHandle {
+        let mut web_handle = WebHandle::empty();
+        web_handle.id = self.0;
+        RawWindowHandle::Web(web_handle)
+    }
+}
+
+fn set_canvas_size(canvas_element: &Element, window_size: &PhysicalSize<f32>) {
+    canvas_element
+        .set_attribute("width", &window_size.width.to_string())
+        .unwrap();
+    canvas_element
+        .set_attribute("height", &window_size.height.to_string())
+        .unwrap();
+    canvas_element
+        .set_attribute(
+            "style",
+            &format!(
+                "width: {}px; height: {}px;",
+                window_size.width, window_size.height
+            ),
+        )
+        .unwrap();
 }
 
 #[cfg(target_arch = "wasm32")]

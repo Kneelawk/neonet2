@@ -10,6 +10,7 @@ use wgpu::{
     Buffer, BufferAddress, BufferAsyncError, BufferDescriptor, BufferUsages, CommandBuffer,
     CommandEncoderDescriptor, Device, MapMode,
 };
+use crate::util::least_power_of_2_greater;
 
 /// Statically-sized wrapper around a GPU buffer.
 pub struct BufferWrapper<D: Encodable + Sized> {
@@ -213,6 +214,7 @@ impl<D: Encodable + Sized> BufferWrapper<D> {
     /// Makes sure there is enough space in the staging buffer to handle
     /// whatever needs the staging buffer.
     fn ensure_staging_capacity(&mut self, device: &Device, size: BufferAddress) {
+        let size = least_power_of_2_greater(size);
         if self.staging_buffer.is_none() || self.staging_capacity < size {
             self.staging_buffer = Some(device.create_buffer(&BufferDescriptor {
                 label: Some("wrapped_staging_buffer"),

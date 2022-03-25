@@ -12,6 +12,8 @@ use winit::{dpi::PhysicalSize, error::OsError};
 #[cfg(not(target_arch = "wasm32"))]
 pub use desktop::DesktopFlow;
 #[cfg(target_arch = "wasm32")]
+pub use web::WebFlowBuilder;
+#[cfg(target_arch = "wasm32")]
 pub use web::WebFlow;
 
 /// Signal sent by the application to the Flow to control the application flow.
@@ -33,16 +35,18 @@ pub struct FlowModelInit {
 /// support an asynchronous application.
 #[async_trait]
 pub trait FlowModel {
-    async fn init(init: FlowModelInit) -> Self;
+    async fn init(init: FlowModelInit) -> Self
+    where
+        Self: Sized;
 
     /// Specifically handles resize events.
     async fn resize(&mut self, size: PhysicalSize<f32>);
 
     async fn update(&mut self, update_delta: Duration);
 
-    async fn render(&mut self, frame_view: &TextureView, render_delta: Duration);
+    fn render(&mut self, frame_view: &TextureView, render_delta: Duration);
 
-    async fn shutdown(self);
+    fn shutdown(&mut self);
 }
 
 #[derive(Error, Debug)]

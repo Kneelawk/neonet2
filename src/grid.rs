@@ -1,3 +1,4 @@
+#[cfg(feature = "timer")]
 use crate::timer::Timer;
 
 pub struct Grid<P: Positioned + Clone> {
@@ -151,7 +152,7 @@ impl<P: Positioned + Clone> Grid<P> {
     }
 
     pub fn pairs<F: FnMut(&P, &P, f32)>(&mut self, mut f: F) {
-        #[cfg(debug_assertions)]
+        #[cfg(feature = "timer")]
         let _timer = Timer::from_str("Grid::pairs");
 
         let max_distance_sqr = self.chunk_size * self.chunk_size;
@@ -166,7 +167,7 @@ impl<P: Positioned + Clone> Grid<P> {
 
         let grid_len = self.chunks.len();
         for y in 0..grid_len {
-            #[cfg(debug_assertions)]
+            #[cfg(feature = "timer")]
             let _timer = Timer::new(format!("Grid::paris y={}", y));
 
             let strip = &self.chunks[y];
@@ -178,7 +179,7 @@ impl<P: Positioned + Clone> Grid<P> {
 
             let strip_len = strip.len();
             for x in 0..strip_len {
-                #[cfg(debug_assertions)]
+                #[cfg(feature = "timer")]
                 let _timer = Timer::new(format!("Grid::pairs y={} x={}", y, x));
 
                 let chunk = &strip[x];
@@ -205,7 +206,7 @@ impl<P: Positioned + Clone> Grid<P> {
 
                 for p in chunk.iter() {
                     {
-                        #[cfg(debug_assertions)]
+                        #[cfg(feature = "timer")]
                         let _timer = Timer::new(format!("Grid::pairs self-chunk y={} x={}", y, x));
                         for op in self.tmp.iter() {
                             try_call(p, op);
@@ -214,7 +215,7 @@ impl<P: Positioned + Clone> Grid<P> {
                     }
 
                     {
-                        #[cfg(debug_assertions)]
+                        #[cfg(feature = "timer")]
                         let _timer = Timer::new(format!("Grid::pairs over y={} x={}", y, x));
                         if let Some(over) = over {
                             for op in over.iter() {
@@ -224,7 +225,7 @@ impl<P: Positioned + Clone> Grid<P> {
                     }
 
                     {
-                        #[cfg(debug_assertions)]
+                        #[cfg(feature = "timer")]
                         let _timer = Timer::new(format!("Grid::pairs below y={} x={}", y, x));
                         if let Some(below) = below {
                             for op in below.iter() {
@@ -234,7 +235,7 @@ impl<P: Positioned + Clone> Grid<P> {
                     }
 
                     {
-                        #[cfg(debug_assertions)]
+                        #[cfg(feature = "timer")]
                         let _timer = Timer::new(format!("Grid::pairs over-below y={} x={}", y, x));
                         if let Some(over_below) = over_below {
                             for op in over_below.iter() {
@@ -244,7 +245,7 @@ impl<P: Positioned + Clone> Grid<P> {
                     }
 
                     {
-                        #[cfg(debug_assertions)]
+                        #[cfg(feature = "timer")]
                         let _timer = Timer::new(format!("Grid::pairs back-below y={} x={}", y, x));
                         if let Some(back_below) = back_below {
                             for op in back_below.iter() {

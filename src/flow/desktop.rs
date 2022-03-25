@@ -243,10 +243,7 @@ impl DesktopFlow {
                     if let Some(frame) = frame {
                         let view = frame.texture.create_view(&TextureViewDescriptor::default());
 
-                        runtime
-                            .as_ref()
-                            .unwrap()
-                            .block_on(model.as_mut().unwrap().render(&view, delta));
+                        model.as_mut().unwrap().render(&view, delta);
 
                         frame.present();
                     }
@@ -256,8 +253,8 @@ impl DesktopFlow {
 
                     let runtime = runtime.take().unwrap();
 
-                    let model = model.take().unwrap();
-                    runtime.block_on(model.shutdown());
+                    let mut model = model.take().unwrap();
+                    model.shutdown();
 
                     status.store(false, Ordering::Release);
                     if let Err(e) = runtime.block_on(poll_task.take().unwrap()) {

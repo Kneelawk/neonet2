@@ -27,6 +27,7 @@ lto = true
 # If you uncomment this line, it will enable `wee_alloc`:
 #default = ["wee_alloc"]
 wee_alloc = ["dep:wee_alloc"]
+timer = []
 
 [dependencies]
 async-trait = "^0.1.52"
@@ -63,6 +64,10 @@ async-channel = "^1.6.1"
 # all the `std::fmt` and `std::panicking` infrastructure, so it's only enabled
 # in debug mode.
 console_error_panic_hook = "0.1.7"
+
+js-sys = "0.3.56"
+
+raw-window-handle = "0.4.2"
 
 # The `wasm-bindgen` crate provides the bare minimum functionality needed
 # to interact with JavaScript.
@@ -104,4 +109,3 @@ features = [
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3.29"
 futures = "0.3.21"
-js-sys = "0.3.56"
