@@ -3,14 +3,11 @@
 #[macro_use]
 extern crate async_trait;
 #[macro_use]
-extern crate lazy_static;
-#[macro_use]
 extern crate log;
 #[macro_use]
 extern crate thiserror;
 
 mod buffer;
-mod controller;
 pub mod flow;
 mod grid;
 pub mod neonet;

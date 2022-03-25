@@ -98,6 +98,7 @@ impl<P: Positioned + Clone> Grid<P> {
         self.chunks[y][x].push(p);
     }
 
+    #[allow(dead_code)]
     pub fn clear(&mut self) {
         for strip in self.chunks.iter_mut() {
             for chunk in strip.iter_mut() {
@@ -127,6 +128,7 @@ impl<P: Positioned + Clone> Grid<P> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn all_within<F: FnMut(&P, f32)>(&self, x: f32, y: f32, distance: f32, mut f: F) {
         let x = x + self.position_offset;
         let y = y + self.position_offset;

@@ -1,9 +1,6 @@
 //! Desktop-Specific Flow implementation.
 
-use crate::{
-    controller::{AppController, APP_CONTROLLER},
-    flow::{FlowModel, FlowModelInit, FlowSignal, FlowStartError},
-};
+use crate::flow::{FlowModel, FlowModelInit, FlowSignal, FlowStartError};
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -81,7 +78,6 @@ impl DesktopFlow {
 
         info!("Creating event loop...");
         let event_loop = EventLoop::<FlowSignal>::with_user_event();
-        *APP_CONTROLLER.lock().unwrap() = AppController::Proxy(event_loop.create_proxy());
 
         info!("Creating window...");
         let window = {
