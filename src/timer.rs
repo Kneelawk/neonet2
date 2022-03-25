@@ -12,9 +12,7 @@ impl Timer {
     pub fn from_str(name: &str) -> Timer {
         #[cfg(target_arch = "wasm32")]
         web_sys::console::time_with_label(name);
-        Timer {
-            name: name.to_string(),
-        }
+        Timer { name: name.to_string() }
     }
 }
 

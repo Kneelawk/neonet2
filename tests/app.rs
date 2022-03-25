@@ -17,10 +17,12 @@ fn web_test() {
     assert_eq!(1, 1);
 }
 
-// This runs a unit test in the browser, and in addition it supports asynchronous Future APIs.
+// This runs a unit test in the browser, and in addition it supports
+// asynchronous Future APIs.
 #[wasm_bindgen_test(async)]
 fn async_test() -> impl Future<Output = ()> {
-    // Creates a JavaScript Promise which will asynchronously resolve with the value 42.
+    // Creates a JavaScript Promise which will asynchronously resolve with the value
+    // 42.
     let promise = js_sys::Promise::resolve(&JsValue::from(42i32));
 
     // Converts that Promise into a Future.

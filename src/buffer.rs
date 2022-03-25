@@ -4,13 +4,13 @@
 // Because this file is coped often, not all projects use all the methods supplied here.
 #![allow(dead_code)]
 
+use crate::util::least_power_of_2_greater;
 use bytemuck::{cast_slice, Pod};
 use std::{marker::PhantomData, mem::size_of};
 use wgpu::{
     Buffer, BufferAddress, BufferAsyncError, BufferDescriptor, BufferUsages, CommandBuffer,
     CommandEncoderDescriptor, Device, MapMode,
 };
-use crate::util::least_power_of_2_greater;
 
 /// Statically-sized wrapper around a GPU buffer.
 pub struct BufferWrapper<D: Encodable + Sized> {
