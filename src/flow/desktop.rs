@@ -10,7 +10,7 @@ use std::{
 };
 use tokio::{runtime, time::sleep};
 use wgpu::{
-    Backends, DeviceDescriptor, Instance, Maintain, PresentMode, RequestAdapterOptions,
+    Backends, DeviceDescriptor, Instance, Limits, Maintain, PresentMode, RequestAdapterOptions,
     SurfaceConfiguration, SurfaceError, TextureFormat, TextureUsages, TextureViewDescriptor,
 };
 use winit::{
@@ -119,7 +119,9 @@ impl DesktopFlow {
         let (device, queue) = runtime.block_on(adapter.request_device(
             &DeviceDescriptor {
                 label: Some("Device"),
-                limits: Default::default(),
+                // Use WebGL2 limits on desktop to ensure that things that work on desktop should
+                // also work on WebGL2.
+                limits: Limits::downlevel_webgl2_defaults(),
                 features: Default::default(),
             },
             None,
