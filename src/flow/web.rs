@@ -1,8 +1,6 @@
 //! Web-Specific Flow implementation.
 
-use crate::{
-    flow::{FlowModel, FlowModelInit, FlowStartError},
-};
+use crate::flow::{FlowModel, FlowModelInit, FlowStartError, WindowSize};
 use futures::lock::Mutex;
 use js_sys::Promise;
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle, WebHandle};
@@ -20,9 +18,6 @@ use web_sys::{Element, HtmlCanvasElement};
 use wgpu::{
     Backends, Device, DeviceDescriptor, Instance, Limits, Maintain, PresentMode, Queue,
     RequestAdapterOptions, Surface, SurfaceConfiguration, TextureFormat, TextureUsages,
-};
-use winit::{
-    dpi::PhysicalSize,
 };
 
 /// Used to manage a web application's control flow as well as integration with
@@ -57,7 +52,10 @@ impl WebFlowBuilder {
         let web_window = web_sys::window().unwrap();
         let window_width = web_window.inner_width().unwrap().as_f64().unwrap() as f32;
         let window_height = web_window.inner_height().unwrap().as_f64().unwrap() as f32;
-        let window_size = PhysicalSize::new(window_width, window_height);
+        let window_size = WindowSize {
+            width: window_width,
+            height: window_height,
+        };
 
         let window_id = 1;
         let window_handle = CanvasHandleWrapper(window_id);
@@ -196,7 +194,7 @@ impl WebFlow {
 
         future_to_promise(async move {
             info!("Resizing: {}x{}", width, height);
-            let window_size = PhysicalSize::new(width, height);
+            let window_size = WindowSize { width, height };
 
             set_canvas_size(&canvas, &window_size);
             config.width = width as u32;
@@ -261,7 +259,7 @@ unsafe impl HasRawWindowHandle for CanvasHandleWrapper {
     }
 }
 
-fn set_canvas_size(canvas_element: &Element, window_size: &PhysicalSize<f32>) {
+fn set_canvas_size(canvas_element: &Element, window_size: &WindowSize) {
     canvas_element
         .set_attribute("width", &window_size.width.to_string())
         .unwrap();

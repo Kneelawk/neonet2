@@ -1,6 +1,6 @@
 //! Desktop-Specific Flow implementation.
 
-use crate::flow::{FlowModel, FlowModelInit, FlowSignal, FlowStartError};
+use crate::flow::{FlowModel, FlowModelInit, FlowSignal, FlowStartError, WindowSize};
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -91,7 +91,9 @@ impl DesktopFlow {
                 builder
             };
 
-            builder.build(&event_loop)?
+            builder
+                .build(&event_loop)
+                .map_err(|_| FlowStartError::WindowBuilderError)?
         };
 
         let window = Arc::new(window);
@@ -155,7 +157,7 @@ impl DesktopFlow {
         let init = FlowModelInit {
             device: device.clone(),
             queue: queue.clone(),
-            window_size: window_size.into_f32_size(),
+            window_size: window_size.to_window_size(),
             frame_format: config.format,
         };
         let mut model: Option<Model> = Some(runtime.block_on(Model::init(init)));
@@ -180,7 +182,7 @@ impl DesktopFlow {
                         runtime
                             .as_ref()
                             .unwrap()
-                            .block_on(model.as_mut().unwrap().resize(size.into_f32_size()));
+                            .block_on(model.as_mut().unwrap().resize(size.to_window_size()));
                     },
                     WindowEvent::ScaleFactorChanged { ref new_inner_size, .. } => {
                         config.width = new_inner_size.width;
@@ -190,7 +192,7 @@ impl DesktopFlow {
                             model
                                 .as_mut()
                                 .unwrap()
-                                .resize(new_inner_size.into_f32_size()),
+                                .resize(new_inner_size.to_window_size()),
                         );
                     },
                     WindowEvent::CloseRequested
@@ -273,12 +275,15 @@ impl DesktopFlow {
     }
 }
 
-trait IntoF32Size {
-    fn into_f32_size(self) -> PhysicalSize<f32>;
+trait ToWindowSize {
+    fn to_window_size(&self) -> WindowSize;
 }
 
-impl IntoF32Size for PhysicalSize<u32> {
-    fn into_f32_size(self) -> PhysicalSize<f32> {
-        PhysicalSize::new(self.width as f32, self.height as f32)
+impl ToWindowSize for PhysicalSize<u32> {
+    fn to_window_size(&self) -> WindowSize {
+        WindowSize {
+            width: self.width as f32,
+            height: self.height as f32,
+        }
     }
 }

@@ -1,6 +1,6 @@
 use crate::{
     buffer::BufferWrapper,
-    flow::{FlowModel, FlowModelInit},
+    flow::{FlowModel, FlowModelInit, WindowSize},
     grid::{Grid, Positioned},
     util::least_power_of_2_greater,
 };
@@ -17,7 +17,6 @@ use wgpu::{
     ShaderModuleDescriptor, ShaderSource, ShaderStages, TextureView, VertexAttribute,
     VertexBufferLayout, VertexState, VertexStepMode,
 };
-use winit::dpi::PhysicalSize;
 
 #[cfg(feature = "timer")]
 use crate::timer::Timer;
@@ -30,7 +29,7 @@ const LINE_COLOR: Color = Color { r: 0.0, g: 0.4, b: 0.6, a: 1.0 };
 const SHADER_SRC: &str = include_str!("shader.wgsl");
 
 pub struct NeonetApp {
-    size: PhysicalSize<f32>,
+    size: WindowSize,
     points: Grid<Point>,
     device: Arc<Device>,
     queue: Arc<Queue>,
@@ -301,7 +300,7 @@ impl FlowModel for NeonetApp {
         }
     }
 
-    async fn resize(&mut self, size: PhysicalSize<f32>) {
+    async fn resize(&mut self, size: WindowSize) {
         self.size = size;
         self.points.set_size(
             size.width + LINE_LENGTH * 2.0,
@@ -359,8 +358,9 @@ impl FlowModel for NeonetApp {
         self.index_buffer_tmp.clear();
         self.points.pairs(|point, other, distance_sqr| {
             // #[cfg(debug_assertions)]
-            // let _timer1 = Timer::new(format!("Model::render point={:?} other={:?}", point, other));
-            // let alpha = ((1.0 - distance_sqr.sqrt() / LINE_LENGTH) * 255.0) as u8;
+            // let _timer1 = Timer::new(format!("Model::render point={:?} other={:?}",
+            // point, other)); let alpha = ((1.0 - distance_sqr.sqrt() /
+            // LINE_LENGTH) * 255.0) as u8;
 
             self.index_buffer_tmp.push(PointIndex {
                 me: point.index as u32,
