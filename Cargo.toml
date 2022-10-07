@@ -33,6 +33,7 @@ timer = []
 async-trait = "^0.1.52"
 bytemuck = "^1.7.3"
 futures = "^0.3.21"
+futures-intrusive = "^0.4.0"
 futures-util = "^0.3.21"
 getrandom = { version = "^0.2.4", features = ["js"] }
 rand = "^0.8.5"
@@ -43,8 +44,8 @@ log = "^0.4.14"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 dotenv = "^0.15.0"
 env_logger = "^0.9.0"
-wgpu = "^0.12.0"
-winit = "^0.26.1"
+wgpu = "^0.14.0"
+winit = "^0.27.3"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies.tokio]
 version = "^1.17.0"
@@ -65,7 +66,7 @@ console_error_panic_hook = "0.1.7"
 
 js-sys = "0.3.56"
 
-raw-window-handle = "0.4.2"
+raw-window-handle = "0.5.0"
 
 # The `wasm-bindgen` crate provides the bare minimum functionality needed
 # to interact with JavaScript.
@@ -86,7 +87,7 @@ wee_alloc = { version = "0.4.5", optional = true }
 # The `web-sys` crate allows you to interact with the various browser APIs,
 # like the DOM.
 [target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
-version = "0.3.56"
+version = "0.3.60"
 features = [
     'Document',
     'Element',
@@ -98,7 +99,7 @@ features = [
 
 # `wgpu` crate to allow for advanced rendering API.
 [target.'cfg(target_arch = "wasm32")'.dependencies.wgpu]
-version = "0.12.0"
+version = "^0.14.0"
 features = [
     "webgl"
 ]

@@ -4,37 +4,39 @@ let point_count: u32 = 200u;
 let line_length: f32 = 200.0;
 
 struct VertexData {
-    position: vec2<f32>;
-    color: vec3<f32>;
+    position: vec2<f32>,
+    color: vec3<f32>,
 };
 
 struct Vertices {
-    vertices: array<VertexData, point_count>;
+    vertices: array<VertexData, point_count>,
 };
 
 struct UniformData {
-    screen_width: f32;
-    screen_height: f32;
+    screen_width: f32,
+    screen_height: f32,
 };
 
 struct VertexIndex {
-    [[location(0)]] me: u32;
-    [[location(1)]] other: u32;
-    [[location(2)]] distance_sqr: f32;
+    @location(0) me: u32,
+    @location(1) other: u32,
+    @location(2) distance_sqr: f32,
 };
 
 struct VertexOutput {
-    [[builtin(position)]] position: vec4<f32>;
-    [[location(0)]] color: vec4<f32>;
+    @builtin(position) position: vec4<f32>,
+    @location(0) color: vec4<f32>,
 };
 
-[[group(0), binding(0)]]
+@group(0)
+@binding(0)
 var<uniform> uniform_data: UniformData;
 
-[[group(0), binding(1)]]
+@group(0)
+@binding(1)
 var<uniform> vertices: Vertices;
 
-[[stage(vertex)]]
+@vertex
 fn vert_main(index: VertexIndex) -> VertexOutput {
     var output: VertexOutput;
     var me = vertices.vertices[index.me];
@@ -46,7 +48,7 @@ fn vert_main(index: VertexIndex) -> VertexOutput {
     return output;
 }
 
-[[stage(fragment)]]
-fn frag_main(in: VertexOutput) -> [[location(0)]] vec4<f32> {
+@fragment
+fn frag_main(in: VertexOutput) -> @location(0) vec4<f32> {
     return in.color;
 }

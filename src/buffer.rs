@@ -142,7 +142,11 @@ impl<D: Encodable + Sized> BufferWrapper<D> {
 
         {
             let staging_slice = staging_buffer.slice(..);
-            staging_slice.map_async(MapMode::Write).await?;
+            let (tx, rx) = futures_intrusive::channel::shared::oneshot_channel();
+            staging_slice.map_async(MapMode::Write, move |res| {
+                tx.send(res).ok();
+            });
+            rx.receive().await.unwrap()?;
             let mut mapping = staging_slice.get_mapped_range_mut();
             let copy_size = (data_len as usize) * D::size();
             D::encode_slice(data, &mut mapping[..copy_size]);
@@ -188,7 +192,11 @@ impl<D: Encodable + Sized> BufferWrapper<D> {
 
         {
             let staging_slice = staging_buffer.slice(..);
-            staging_slice.map_async(MapMode::Write).await?;
+            let (tx, rx) = futures_intrusive::channel::shared::oneshot_channel();
+            staging_slice.map_async(MapMode::Write, move |res| {
+                tx.send(res).ok();
+            });
+            rx.receive().await.unwrap()?;
             let mut mapping = staging_slice.get_mapped_range_mut();
             D::encode_slice(data, mapping.as_mut());
         }

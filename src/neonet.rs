@@ -192,7 +192,7 @@ impl FlowModel for NeonetApp {
 
         queue.submit(cbs);
 
-        let shader = device.create_shader_module(&ShaderModuleDescriptor {
+        let shader = device.create_shader_module(ShaderModuleDescriptor {
             label: Some("Shader Module"),
             source: ShaderSource::Wgsl(Cow::Borrowed(SHADER_SRC)),
         });
@@ -260,11 +260,11 @@ impl FlowModel for NeonetApp {
             fragment: Some(FragmentState {
                 module: &shader,
                 entry_point: "frag_main",
-                targets: &[ColorTargetState {
+                targets: &[Some(ColorTargetState {
                     format: frame_format,
                     blend: Some(BlendState::ALPHA_BLENDING),
                     write_mask: ColorWrites::ALL,
-                }],
+                })],
             }),
             primitive: PrimitiveState {
                 topology: PrimitiveTopology::LineList,
@@ -410,14 +410,14 @@ impl FlowModel for NeonetApp {
         {
             let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
                 label: Some("Render Pass"),
-                color_attachments: &[RenderPassColorAttachment {
+                color_attachments: &[Some(RenderPassColorAttachment {
                     view,
                     resolve_target: None,
                     ops: Operations {
                         load: LoadOp::Clear(BACKGROUND_COLOR),
                         store: true,
                     },
-                }],
+                })],
                 depth_stencil_attachment: None,
             });
 

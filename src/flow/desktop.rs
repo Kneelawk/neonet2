@@ -10,13 +10,14 @@ use std::{
 };
 use tokio::{runtime, time::sleep};
 use wgpu::{
-    Backends, DeviceDescriptor, Instance, Limits, Maintain, PresentMode, RequestAdapterOptions,
-    SurfaceConfiguration, SurfaceError, TextureFormat, TextureUsages, TextureViewDescriptor,
+    Backends, CompositeAlphaMode, DeviceDescriptor, Instance, Limits, Maintain, PresentMode,
+    RequestAdapterOptions, SurfaceConfiguration, SurfaceError, TextureFormat, TextureUsages,
+    TextureViewDescriptor,
 };
 use winit::{
     dpi::PhysicalSize,
     event::{Event, KeyboardInput, VirtualKeyCode, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
+    event_loop::{ControlFlow, EventLoopBuilder},
     window::{Fullscreen, WindowBuilder},
 };
 
@@ -77,7 +78,7 @@ impl DesktopFlow {
         let runtime = runtime::Builder::new_multi_thread().enable_all().build()?;
 
         info!("Creating event loop...");
-        let event_loop = EventLoop::<FlowSignal>::with_user_event();
+        let event_loop = EventLoopBuilder::<FlowSignal>::with_user_event().build();
 
         info!("Creating window...");
         let window = {
@@ -142,7 +143,7 @@ impl DesktopFlow {
         }));
 
         info!("Configuring surface...");
-        let preferred_format = surface.get_preferred_format(&adapter);
+        let preferred_format = surface.get_supported_formats(&adapter).into_iter().next();
         info!("Preferred render frame format: {:?}", preferred_format);
         let mut config = SurfaceConfiguration {
             usage: TextureUsages::RENDER_ATTACHMENT,
@@ -150,6 +151,7 @@ impl DesktopFlow {
             width: window_size.width,
             height: window_size.height,
             present_mode: PresentMode::Fifo,
+            alpha_mode: CompositeAlphaMode::Auto,
         };
 
         surface.configure(&device, &config);

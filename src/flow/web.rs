@@ -3,7 +3,7 @@
 use crate::flow::{FlowModel, FlowModelInit, FlowStartError, WindowSize};
 use futures::lock::Mutex;
 use js_sys::Promise;
-use raw_window_handle::{HasRawWindowHandle, RawWindowHandle, WebHandle};
+use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle, WebDisplayHandle, WebWindowHandle};
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -16,8 +16,9 @@ use wasm_bindgen_futures::future_to_promise;
 use wasm_timer::Delay;
 use web_sys::{Element, HtmlCanvasElement};
 use wgpu::{
-    Backends, Device, DeviceDescriptor, Instance, Limits, Maintain, PresentMode, Queue,
-    RequestAdapterOptions, Surface, SurfaceConfiguration, TextureFormat, TextureUsages,
+    Backends, CompositeAlphaMode, Device, DeviceDescriptor, Instance, Limits, Maintain,
+    PresentMode, Queue, RequestAdapterOptions, Surface, SurfaceConfiguration, TextureFormat,
+    TextureUsages,
 };
 
 /// Used to manage a web application's control flow as well as integration with
@@ -132,7 +133,7 @@ impl WebFlowBuilder {
         });
 
         info!("Configuring surface...");
-        let preferred_format = surface.get_preferred_format(&adapter);
+        let preferred_format = surface.get_supported_formats(&adapter).into_iter().next();
         info!("Preferred render frame format: {:?}", preferred_format);
         let config = SurfaceConfiguration {
             usage: TextureUsages::RENDER_ATTACHMENT,
@@ -140,6 +141,7 @@ impl WebFlowBuilder {
             width: window_size.width as u32,
             height: window_size.height as u32,
             present_mode: PresentMode::Fifo,
+            alpha_mode: CompositeAlphaMode::Auto,
         };
 
         surface.configure(&device, &config);
@@ -253,9 +255,15 @@ struct CanvasHandleWrapper(u32);
 
 unsafe impl HasRawWindowHandle for CanvasHandleWrapper {
     fn raw_window_handle(&self) -> RawWindowHandle {
-        let mut web_handle = WebHandle::empty();
+        let mut web_handle = WebWindowHandle::empty();
         web_handle.id = self.0;
         RawWindowHandle::Web(web_handle)
+    }
+}
+
+unsafe impl HasRawDisplayHandle for CanvasHandleWrapper {
+    fn raw_display_handle(&self) -> RawDisplayHandle {
+        RawDisplayHandle::Web(WebDisplayHandle::empty())
     }
 }
 
