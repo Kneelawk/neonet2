@@ -1,48 +1,32 @@
-## How to install
+# Neonet2
 
-```sh
-npm install
+Draws moving lines on the screen. This is an example for building a WGPU
+application that can be run on both the desktop and on the web.
+
+## Running
+
+### Desktop
+
+You can run this application like any cargo-based rust application:
+
+```bash
+cargo run --release
 ```
 
-## How to run in debug mode
+### Web
 
-```sh
-# Builds the project and opens it in a new browser tab. Auto-reloads when the project changes.
-npm start
+In order to run this application on the web. First you need to build the web
+assets:
+
+```bash
+wasm-pack build --target web
 ```
 
-## How to build in release mode
+And then you can use a static web server to serve the built files:
 
-```sh
-# Builds the project and places it into the `dist` folder.
-npm run build
+```bash
+python -m http.server
 ```
 
-## How to run unit tests
-
-```sh
-# Runs tests in Firefox
-npm test -- --firefox
-
-# Runs tests in Chrome
-npm test -- --chrome
-
-# Runs tests in Safari
-npm test -- --safari
-```
-
-## What does each file do?
-
-* `Cargo.toml` contains the standard Rust metadata. You put your Rust dependencies in here. You must change this file with your details (name, description, version, authors, categories)
-
-* `package.json` contains the standard npm metadata. You put your JavaScript dependencies in here. You must change this file with your details (author, name, version)
-
-* `webpack.config.js` contains the Webpack configuration. You shouldn't need to change this, unless you have very special needs.
-
-* The `js` folder contains your JavaScript code (`index.js` is used to hook everything into Webpack, you don't need to change it).
-
-* The `src` folder contains your Rust code.
-
-* The `static` folder contains any files that you want copied as-is into the final build. It contains an `index.html` file which loads the `index.js` file.
-
-* The `tests` folder contains your Rust unit tests.
+And open the hosted web-page in your browser (for example
+at [http://127.0.0.1:8000/](http://127.0.0.1:8000/)).
