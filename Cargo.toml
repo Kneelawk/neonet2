@@ -30,16 +30,16 @@ wee_alloc = ["dep:wee_alloc"]
 timer = []
 
 [dependencies]
-async-trait = "^0.1.52"
-bytemuck = "^1.7.3"
-futures = "^0.3.21"
-futures-intrusive = "^0.4.0"
-futures-util = "^0.3.21"
-getrandom = { version = "^0.2.4", features = ["js"] }
+async-trait = "^0.1.58"
+bytemuck = "^1.12.3"
+futures = "^0.3.25"
+futures-intrusive = "^0.5.0"
+futures-util = "^0.3.25"
+getrandom = { version = "^0.2.8", features = ["js"] }
 rand = "^0.8.5"
-thiserror = "^1.0.30"
+thiserror = "^1.0.37"
 lazy_static = "^1.4.0"
-log = "^0.4.14"
+log = "^0.4.17"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 dotenv = "^0.15.0"
@@ -48,7 +48,7 @@ wgpu = "^0.14.0"
 winit = "^0.27.3"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies.tokio]
-version = "^1.17.0"
+version = "^1.21.2"
 features = [
     "rt", "rt-multi-thread", "macros", "time"
 ]
@@ -56,7 +56,7 @@ features = [
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 
 # To allow the winit event-loop to communicate with the application in wasm.
-async-channel = "^1.6.1"
+#async-channel = "^1.6.1"
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
@@ -64,20 +64,20 @@ async-channel = "^1.6.1"
 # in debug mode.
 console_error_panic_hook = "0.1.7"
 
-js-sys = "0.3.56"
+js-sys = "0.3.60"
 
 raw-window-handle = "0.5.0"
 
 # The `wasm-bindgen` crate provides the bare minimum functionality needed
 # to interact with JavaScript.
-wasm-bindgen = "0.2.79"
+wasm-bindgen = "0.2.83"
 
 # `wasm-bindgen-futures` allows us to have our start method be async.
-wasm-bindgen-futures = "0.4.29"
+wasm-bindgen-futures = "0.4.33"
 
 wasm-logger = "^0.2.0"
 
-wasm-timer = "^0.2.5"
+#wasm-timer = "^0.2.5"
 
 # `wee_alloc` is a tiny allocator for wasm that is only ~1K in code size
 # compared to the default allocator's ~10K. However, it is slower than the default
@@ -106,5 +106,5 @@ features = [
 
 # These crates are used for running unit tests.
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
-wasm-bindgen-test = "0.3.29"
-futures = "0.3.21"
+wasm-bindgen-test = "0.3.33"
+futures = "0.3.25"
