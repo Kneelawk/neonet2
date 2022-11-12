@@ -83,6 +83,9 @@ struct GPUColor([f32; 3]);
 struct GPUPoint {
     position: GPUPosition,
     color: GPUColor,
+    _padding1: u32,
+    _padding2: u32,
+    _padding3: u32,
 }
 
 unsafe impl Zeroable for GPUPoint {}
@@ -97,6 +100,9 @@ impl GPUPoint {
                 LINE_COLOR.g as f32,
                 LINE_COLOR.b as f32,
             ]),
+            _padding1: 0,
+            _padding2: 0,
+            _padding3: 0
         }
     }
 }
@@ -106,6 +112,8 @@ impl GPUPoint {
 struct UniformData {
     screen_width: f32,
     screen_height: f32,
+    _padding1: u32,
+    _padding2: u32,
 }
 
 unsafe impl Zeroable for UniformData {}
@@ -176,6 +184,8 @@ impl FlowModel for NeonetApp {
             &[UniformData {
                 screen_width: width,
                 screen_height: height,
+                _padding1: 0,
+                _padding2: 0
             }],
             BufferUsages::UNIFORM,
         );
@@ -314,6 +324,8 @@ impl FlowModel for NeonetApp {
                     &[UniformData {
                         screen_width: size.width,
                         screen_height: size.height,
+                        _padding1: 0,
+                        _padding2: 0
                     }],
                 )
                 .await

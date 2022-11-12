@@ -3,7 +3,10 @@
 use crate::flow::{FlowModel, FlowModelInit, FlowStartError, WindowSize};
 use futures::lock::Mutex;
 use js_sys::Promise;
-use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle, WebDisplayHandle, WebWindowHandle};
+use raw_window_handle::{
+    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle, WebDisplayHandle,
+    WebWindowHandle,
+};
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -13,13 +16,13 @@ use std::{
 };
 use wasm_bindgen::{prelude::wasm_bindgen, JsCast, JsValue};
 use wasm_bindgen_futures::future_to_promise;
-// use wasm_timer::Delay;
 use web_sys::{Element, HtmlCanvasElement};
 use wgpu::{
     Backends, CompositeAlphaMode, Device, DeviceDescriptor, Instance, Limits, Maintain,
     PresentMode, Queue, RequestAdapterOptions, Surface, SurfaceConfiguration, TextureFormat,
     TextureUsages,
 };
+use zduny_wasm_timer::Delay;
 
 /// Used to manage a web application's control flow as well as integration with
 /// the canvas and WGPU.
@@ -122,15 +125,15 @@ impl WebFlowBuilder {
         let status = Arc::new(AtomicBool::new(true));
         let poll_device = device.clone();
         let poll_status = status.clone();
-        // wasm_bindgen_futures::spawn_local(async move {
-        //     info!("Poll task spawned.");
-        //     while poll_status.load(Ordering::Acquire) {
-        //         // Docs say this isn't required on web, but my app locks up without it
-        //         poll_device.poll(Maintain::Poll);
-        //         // Delay::new(Duration::from_millis(1)).await.unwrap();
-        //     }
-        //     info!("Poll task completed.");
-        // });
+        wasm_bindgen_futures::spawn_local(async move {
+            info!("Poll task spawned.");
+            while poll_status.load(Ordering::Acquire) {
+                // Docs say this isn't required on web, but my app locks up without it
+                poll_device.poll(Maintain::Poll);
+                Delay::new(Duration::from_millis(2)).await.unwrap();
+            }
+            info!("Poll task completed.");
+        });
 
         info!("Configuring surface...");
         let preferred_format = surface.get_supported_formats(&adapter).into_iter().next();

@@ -6,6 +6,9 @@ let line_length: f32 = 200.0;
 struct VertexData {
     position: vec2<f32>,
     color: vec3<f32>,
+    _padding1: u32,
+    _padding2: u32,
+    _padding3: u32,
 };
 
 struct Vertices {
@@ -15,6 +18,8 @@ struct Vertices {
 struct UniformData {
     screen_width: f32,
     screen_height: f32,
+    _padding1: u32,
+    _padding2: u32,
 };
 
 struct VertexIndex {
