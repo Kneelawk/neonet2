@@ -102,7 +102,7 @@ impl GPUPoint {
             ]),
             _padding1: 0,
             _padding2: 0,
-            _padding3: 0
+            _padding3: 0,
         }
     }
 }
@@ -185,7 +185,7 @@ impl FlowModel for NeonetApp {
                 screen_width: width,
                 screen_height: height,
                 _padding1: 0,
-                _padding2: 0
+                _padding2: 0,
             }],
             BufferUsages::UNIFORM,
         );
@@ -325,7 +325,7 @@ impl FlowModel for NeonetApp {
                         screen_width: size.width,
                         screen_height: size.height,
                         _padding1: 0,
-                        _padding2: 0
+                        _padding2: 0,
                     }],
                 )
                 .await

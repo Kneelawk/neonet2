@@ -74,9 +74,6 @@ wasm-bindgen-futures = "0.4.33"
 
 wasm-logger = "^0.2.0"
 
-# TODO: find a better library for WASM delay futures or write my own
-zduny-wasm-timer = "^0.2.7"
-
 # `wee_alloc` is a tiny allocator for wasm that is only ~1K in code size
 # compared to the default allocator's ~10K. However, it is slower than the default
 # allocator, so it's not enabled by default.

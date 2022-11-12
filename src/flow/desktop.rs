@@ -1,16 +1,10 @@
 //! Desktop-Specific Flow implementation.
 
 use crate::flow::{FlowModel, FlowModelInit, FlowSignal, FlowStartError, WindowSize};
-use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    time::{Duration, SystemTime},
-};
-use tokio::{runtime, time::sleep};
+use std::{sync::Arc, time::SystemTime};
+use tokio::runtime;
 use wgpu::{
-    Backends, CompositeAlphaMode, DeviceDescriptor, Instance, Limits, Maintain, PresentMode,
+    Backends, CompositeAlphaMode, DeviceDescriptor, Instance, Limits, PresentMode,
     RequestAdapterOptions, SurfaceConfiguration, SurfaceError, TextureFormat, TextureUsages,
     TextureViewDescriptor,
 };
@@ -131,17 +125,6 @@ impl DesktopFlow {
         let device = Arc::new(device);
         let queue = Arc::new(queue);
 
-        info!("Creating device poll task");
-        let poll_device = device.clone();
-        let status = Arc::new(AtomicBool::new(true));
-        let poll_status = status.clone();
-        let mut poll_task = Some(runtime.spawn(async move {
-            while poll_status.load(Ordering::Acquire) {
-                poll_device.poll(Maintain::Poll);
-                sleep(Duration::from_millis(5)).await;
-            }
-        }));
-
         info!("Configuring surface...");
         let preferred_format = surface.get_supported_formats(&adapter).into_iter().next();
         info!("Preferred render frame format: {:?}", preferred_format);
@@ -257,11 +240,6 @@ impl DesktopFlow {
 
                     let mut model = model.take().unwrap();
                     model.shutdown();
-
-                    status.store(false, Ordering::Release);
-                    if let Err(e) = runtime.block_on(poll_task.take().unwrap()) {
-                        error!("Error stopping device poll task: {:?}", e);
-                    }
 
                     // shutdown WGPU
                     drop(queue.take());

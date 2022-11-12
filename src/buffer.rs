@@ -9,7 +9,7 @@ use bytemuck::{cast_slice, Pod};
 use std::{marker::PhantomData, mem::size_of};
 use wgpu::{
     Buffer, BufferAddress, BufferAsyncError, BufferDescriptor, BufferUsages, CommandBuffer,
-    CommandEncoderDescriptor, Device, MapMode,
+    CommandEncoderDescriptor, Device, Maintain, MapMode,
 };
 
 /// Statically-sized wrapper around a GPU buffer.
@@ -146,6 +146,7 @@ impl<D: Encodable + Sized> BufferWrapper<D> {
             staging_slice.map_async(MapMode::Write, move |res| {
                 tx.send(res).ok();
             });
+            device.poll(Maintain::Wait);
             rx.receive().await.unwrap()?;
             let mut mapping = staging_slice.get_mapped_range_mut();
             let copy_size = (data_len as usize) * D::size();
@@ -196,6 +197,7 @@ impl<D: Encodable + Sized> BufferWrapper<D> {
             staging_slice.map_async(MapMode::Write, move |res| {
                 tx.send(res).ok();
             });
+            device.poll(Maintain::Wait);
             rx.receive().await.unwrap()?;
             let mut mapping = staging_slice.get_mapped_range_mut();
             D::encode_slice(data, mapping.as_mut());
