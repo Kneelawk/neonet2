@@ -55,9 +55,6 @@ features = [
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 
-# To allow the winit event-loop to communicate with the application in wasm.
-#async-channel = "^1.6.1"
-
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
 # all the `std::fmt` and `std::panicking` infrastructure, so it's only enabled
