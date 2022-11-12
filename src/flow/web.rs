@@ -3,22 +3,20 @@
 use crate::flow::{FlowModel, FlowModelInit, FlowStartError, WindowSize};
 use futures::lock::Mutex;
 use js_sys::Promise;
-use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle, WebDisplayHandle, WebWindowHandle};
+use raw_window_handle::{
+    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle, WebDisplayHandle,
+    WebWindowHandle,
+};
 use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+    sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use wasm_bindgen::{prelude::wasm_bindgen, JsCast, JsValue};
 use wasm_bindgen_futures::future_to_promise;
-use wasm_timer::Delay;
 use web_sys::{Element, HtmlCanvasElement};
 use wgpu::{
-    Backends, CompositeAlphaMode, Device, DeviceDescriptor, Instance, Limits, Maintain,
-    PresentMode, Queue, RequestAdapterOptions, Surface, SurfaceConfiguration, TextureFormat,
-    TextureUsages,
+    Backends, CompositeAlphaMode, Device, DeviceDescriptor, Instance, Limits, PresentMode, Queue,
+    RequestAdapterOptions, Surface, SurfaceConfiguration, TextureFormat, TextureUsages,
 };
 
 /// Used to manage a web application's control flow as well as integration with
@@ -118,20 +116,6 @@ impl WebFlowBuilder {
         let device = Arc::new(device);
         let queue = Arc::new(queue);
 
-        info!("Creating device poll task...");
-        let status = Arc::new(AtomicBool::new(true));
-        let poll_device = device.clone();
-        let poll_status = status.clone();
-        wasm_bindgen_futures::spawn_local(async move {
-            info!("Poll task spawned.");
-            while poll_status.load(Ordering::Acquire) {
-                // Docs say this isn't required on web, but my app locks up without it
-                poll_device.poll(Maintain::Poll);
-                Delay::new(Duration::from_millis(1)).await.unwrap();
-            }
-            info!("Poll task completed.");
-        });
-
         info!("Configuring surface...");
         let preferred_format = surface.get_supported_formats(&adapter).into_iter().next();
         info!("Preferred render frame format: {:?}", preferred_format);
@@ -161,7 +145,6 @@ impl WebFlowBuilder {
         Ok(WebFlow {
             canvas,
             _instance: instance,
-            poll_control: status,
             surface,
             device,
             _queue: queue,
@@ -176,7 +159,6 @@ impl WebFlowBuilder {
 pub struct WebFlow {
     canvas: HtmlCanvasElement,
     _instance: Arc<Instance>,
-    poll_control: Arc<AtomicBool>,
     surface: Arc<Surface>,
     device: Arc<Device>,
     _queue: Arc<Queue>,
@@ -243,9 +225,6 @@ impl WebFlow {
 
 impl Drop for WebFlow {
     fn drop(&mut self) {
-        info!("Stopping poll task...");
-        self.poll_control.store(false, Ordering::Release);
-
         info!("Removing canvas...");
         self.canvas.remove();
     }
