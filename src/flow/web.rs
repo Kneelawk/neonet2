@@ -71,7 +71,7 @@ impl WebFlowBuilder {
 
             let canvas_element = document.create_element("canvas").unwrap();
             canvas_element.set_id(&canvas_id);
-            canvas_element.set_attribute("tabindex", "0").unwrap();
+            // canvas_element.set_attribute("tabindex", "0").unwrap();
 
             // get WGPU to recognize the canvas
             canvas_element
